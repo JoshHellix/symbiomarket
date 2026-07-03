@@ -32,12 +32,25 @@ export type SwarmPayment = {
   purpose: string;
   time: string;
   fhe_status?: string;
+  mode?: string;
+  gateway_tx?: string | null;
+  payer?: string;
+  endpoint?: string;
 };
 
 export type SwarmMemory = {
   oracle_bias: number;
   risk_factor: number;
   learning_rate: number;
+};
+
+export type SwarmSettlement = {
+  layer?: string;
+  creators_api?: string;
+  mode?: string;
+  live_payments_total?: number;
+  live_usdc_total?: number;
+  x402_base?: string;
 };
 
 export type SwarmState = {
@@ -48,6 +61,8 @@ export type SwarmState = {
   memory?: SwarmMemory;
   cycles: SwarmCycle[];
   payments: SwarmPayment[];
+  payment_mesh?: unknown[];
+  settlement?: SwarmSettlement;
 };
 
 export function useSwarmState(pollMs = 3000) {

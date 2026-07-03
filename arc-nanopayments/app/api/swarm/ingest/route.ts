@@ -4,12 +4,17 @@
  */
 
 import { NextResponse } from "next/server";
-import { isRemoteIngestEnabled, setFheState, setSwarmState } from "@/lib/swarm-state-store";
+import {
+  isRemoteIngestEnabled,
+  remoteStorageKind,
+  setFheState,
+  setSwarmState,
+} from "@/lib/swarm-state-store";
 
 export async function POST(request: Request) {
   if (!isRemoteIngestEnabled()) {
     return NextResponse.json(
-      { error: "Ingest not configured (link Redis or Blob + SWARM_INGEST_SECRET)" },
+      { error: "Ingest not configured (Supabase, Redis, or Blob + SWARM_INGEST_SECRET)" },
       { status: 503 },
     );
   }
@@ -32,11 +37,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (body.swarm) await setSwarmState(body.swarm);
+    let swarmAccepted = !body.swarm;
+    let swarmSkipReason: string | undefined;
+    if (body.swarm) {
+      const result = await setSwarmState(body.swarm);
+      swarmAccepted = result.accepted;
+      swarmSkipReason = result.reason;
+    }
     if (body.fhe) await setFheState(body.fhe);
     return NextResponse.json({
       ok: true,
-      updated: { swarm: !!body.swarm, fhe: !!body.fhe },
+      storage: remoteStorageKind(),
+      updated: { swarm: swarmAccepted, fhe: !!body.fhe },
+      ...(swarmSkipReason ? { skipped: swarmSkipReason } : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "KV write failed";

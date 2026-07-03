@@ -1,15 +1,30 @@
 import json
 import random
 import asyncio
+import os
 from datetime import datetime
 
+from dotenv import load_dotenv
+
 from repo_paths import swarm_data_path
+from settlement_intents import build_payment_mesh, mesh_to_legacy_payments
+from live_x402 import apply_live_mesh, live_x402_enabled, settlement_stats
+from market_feed import fetch_market_snapshot
+from oracle_llm import oracle_act
+
+load_dotenv(swarm_data_path().parent / ".env")
 
 try:
-    from push_swarm_state import push_remote_state
+    from push_swarm_state import push_remote_state, should_push_remote, push_every_n
 except ImportError:
     def push_remote_state(swarm=None, include_fhe=True):
         return False
+
+    def should_push_remote(cycle_num: int) -> bool:
+        return False
+
+    def push_every_n() -> int:
+        return 6
 
 # ---------------------------
 # SWARM MEMORY (LEARNING STATE)
@@ -37,74 +52,72 @@ data = {
 }
 
 # ---------------------------
-# MARKET ENGINE
+# MARKET — live feed (CoinGecko), not pure random
 # ---------------------------
 
 
-def generate_market():
-    price = 100 + random.uniform(-6, 6)
-    volatility = random.uniform(0.01, 0.06)
+def session_budget_usdc() -> float:
+    raw = (os.getenv("SWARM_SESSION_BUDGET_USDC") or "0.15").strip()
+    try:
+        return max(0.01, float(raw))
+    except ValueError:
+        return 0.15
 
-    if volatility > 0.05:
-        trend = "volatile"
-    elif price > 101:
-        trend = "bullish"
-    elif price < 99:
-        trend = "bearish"
-    else:
-        trend = "neutral"
-
-    return {
-        "price": round(price, 4),
-        "volatility": round(volatility, 6),
-        "trend": trend
-    }
 
 # ---------------------------
-# ORACLE (SIGNAL GENERATOR)
+# ORACLE — LLM when DEEPSEEK_API_KEY set (see oracle_llm.py)
 # ---------------------------
 
 
-def oracle_act(market):
-    bias = swarm_memory["oracle_bias"]
-
-    if market["trend"] == "bullish":
-        signal = "buy"
-    elif market["trend"] == "bearish":
-        signal = "sell"
-    elif market["trend"] == "volatile":
-        signal = random.choice(["hold", "sell"])
-    else:
-        signal = random.choice(["buy", "hold"])
-
-    confidence = max(0.55, min(0.99, bias * random.uniform(0.7, 1.0)))
-
-    return {
-        "signal": signal,
-        "confidence": confidence
-    }
-
 # ---------------------------
-# STRATEGIST (FILTER / DECISION LAYER)
+# STRATEGIST — budget + feed priority (RFB 6: pay vs skip)
 # ---------------------------
 
 
-def strategist_act(oracle_msg, market):
+def strategist_act(oracle_msg, market, session_spent: float, budget: float):
     risk = swarm_memory["risk_factor"]
 
-    if market["volatility"] > 0.055:
-        return {"decision": "hold", "bias": 0}
+    if session_spent >= budget:
+        return {
+            "decision": "hold",
+            "bias": 0,
+            "reason": f"session budget ${budget:.4f} reached (${session_spent:.4f} spent)",
+        }
 
-    if oracle_msg["confidence"] < 0.7 * risk:
+    if oracle_msg.get("data_priority") == "low":
+        return {
+            "decision": "hold",
+            "bias": 0,
+            "reason": "oracle marked low data priority — defer paid feeds",
+        }
+
+    if market.get("volatility", 0) > 0.09:
+        return {
+            "decision": "hold",
+            "bias": 0,
+            "reason": "high volatility — strategist deferred routing spend",
+        }
+
+    confidence = oracle_msg.get("confidence", 0.5)
+    if confidence < 0.65 * risk:
+        return {
+            "decision": "hold",
+            "bias": 0,
+            "reason": f"confidence {confidence:.2f} below risk-adjusted threshold",
+        }
+
+    signal = oracle_msg.get("signal", "hold")
+    if signal == "hold":
         decision = "hold"
     else:
-        decision = oracle_msg["signal"]
+        decision = signal
 
     bias = 1 if decision == "buy" else -1 if decision == "sell" else 0
 
     return {
         "decision": decision,
-        "bias": bias
+        "bias": bias,
+        "reason": oracle_msg.get("reason", "proceed with paid data/creator routes"),
     }
 
 # ---------------------------
@@ -152,35 +165,18 @@ def evaluator_act(pnl):
     }
 
 # ---------------------------
-# PAYMENT LABELS (dashboard / grant demo)
-# ---------------------------
-
-_PAYMENT_PURPOSES = (
-    "oracle_intel",
-    "strategy_relay",
-    "execution_conf",
-    "market_scan",
-    "data_sync",
-    "position_adj",
-)
-
-
-def _payment_purpose(strategist_decision: str) -> str:
-    if strategist_decision == "hold":
-        return random.choice(_PAYMENT_PURPOSES)
-    return strategist_decision
-
-
-# ---------------------------
 # MAIN SWARM LOOP
 # ---------------------------
 
 
 async def update_cycle(cycle_num):
-    market = generate_market()
+    market = fetch_market_snapshot()
+    budget = session_budget_usdc()
+    stats_before = settlement_stats()
+    session_spent = float(stats_before.get("live_usdc", 0))
 
-    oracle = oracle_act(market)
-    strategist = strategist_act(oracle, market)
+    oracle = await oracle_act(market)
+    strategist = strategist_act(oracle, market, session_spent, budget)
     pnl = executor_act(strategist, market)
     evaluation = evaluator_act(pnl)
 
@@ -200,19 +196,23 @@ async def update_cycle(cycle_num):
     data["cycles"].insert(0, cycle)
     data["cycles"] = data["cycles"][:12]
 
-    # payments (swarm economy)
-    payment = {
-        "tx_id": f"TX-{cycle_num:06d}",
-        "from": random.choice(AGENTS),
-        "to": random.choice(AGENTS),
-        "amount": round(random.uniform(0.0005, 0.003), 6),
-        "purpose": _payment_purpose(strategist["decision"]),
-        "time": datetime.now().strftime("%H:%M:%S"),
-        "fhe_status": "pending",
-    }
+    # payment mesh — one intent per agent role (settlement layer)
+    mesh = build_payment_mesh(
+        cycle_num,
+        strategist["decision"],
+        pnl,
+    )
+    mesh = apply_live_mesh(mesh)
+    payments = mesh_to_legacy_payments(mesh)
+    now = datetime.now().strftime("%H:%M:%S")
+    for row in payments:
+        row["time"] = now
+        row["fhe_status"] = "confirmed" if row.get("mode") == "live" else "pending"
 
-    data["payments"].insert(0, payment)
-    data["payments"] = data["payments"][:12]
+    data["payments"] = (payments + data["payments"])[:24]
+
+    stats = settlement_stats()
+    settlement_mode = "live" if live_x402_enabled() else "simulated"
 
     # FINAL OUTPUT (dashboard contract)
     state = {
@@ -223,6 +223,19 @@ async def update_cycle(cycle_num):
         "memory": dict(swarm_memory),
         "cycles": data["cycles"],
         "payments": data["payments"],
+        "payment_mesh": mesh,
+        "settlement": {
+            "layer": "SymbioMarket Settlement Core",
+            "creators_api": "/api/settlement/creators",
+            "register_url": "/register",
+            "mode": settlement_mode,
+            "live_payments_total": stats["live_payments"],
+            "live_usdc_total": round(stats["live_usdc"], 6),
+            "session_budget_usdc": budget,
+            "x402_base": os.getenv("X402_BASE_URL", "http://localhost:3000"),
+            "market_source": market.get("source"),
+            "oracle_mode": oracle.get("mode"),
+        },
     }
 
     output_path = swarm_data_path()
@@ -231,21 +244,43 @@ async def update_cycle(cycle_num):
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
 
-    if push_remote_state(state):
-        print(f"[ok] Cycle {cycle_num} -> swarm updated + pushed to Vercel")
+    n = push_every_n()
+    if should_push_remote(cycle_num) and push_remote_state(state):
+        print(f"[ok] Cycle {cycle_num} -> swarm updated + pushed to Vercel (every {n} cycles)")
+    elif should_push_remote(cycle_num):
+        print(f"[ok] Cycle {cycle_num} -> swarm updated (push failed — check UPSTASH_SETUP.md)")
     else:
-        print(f"[ok] Cycle {cycle_num} -> swarm updated")
+        next_push = cycle_num + (n - cycle_num % n) if cycle_num % n != 0 else cycle_num + n
+        print(f"[ok] Cycle {cycle_num} -> swarm updated (push skipped — next at cycle {next_push})")
 
 
 # ---------------------------
 # RUN LOOP
 # ---------------------------
+def load_start_cycle() -> int:
+    """Resume counter after restart so Vercel cycle never jumps backward."""
+    try:
+        path = swarm_data_path()
+        if path.exists():
+            with open(path, encoding="utf-8") as f:
+                return int(json.load(f).get("cycle", 0))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return 0
+
+
 async def main():
-    print("Swarm Intelligence Engine started")
+    mode = "LIVE x402" if live_x402_enabled() else "simulated payments"
+    start = load_start_cycle()
+    print(f"Swarm Intelligence Engine started ({mode})")
+    if start > 0:
+        print(f"[resume] continuing from cycle {start}")
+
+    interval = float(os.getenv("SWARM_CYCLE_SECONDS", "12" if live_x402_enabled() else "6"))
 
     for i in range(999999):
-        await update_cycle(i + 1)
-        await asyncio.sleep(6)
+        await update_cycle(start + i + 1)
+        await asyncio.sleep(interval)
 
 
 if __name__ == "__main__":

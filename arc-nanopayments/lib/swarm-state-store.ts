@@ -1,14 +1,17 @@
 /**
- * Swarm + FHE state: local JSON (dev) | Upstash KV | Vercel Blob (prod).
+ * Swarm + FHE state: local JSON (dev) | Upstash KV | Supabase (free) | Vercel Blob (prod).
  */
 
 import { get, put } from "@vercel/blob";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { Redis } from "@upstash/redis";
+import { getServiceSupabase } from "@/lib/supabase/service";
 
 const SWARM_KEY = "symbio:swarm";
 const FHE_KEY = "symbio:fhe";
+const SWARM_ROW = "swarm";
+const FHE_ROW = "fhe";
 const SWARM_BLOB = "symbio/swarm.json";
 const FHE_BLOB = "symbio/fhe.json";
 
@@ -21,7 +24,24 @@ export const EMPTY_SWARM = {
 };
 
 function hasKv(): boolean {
-  return !!(process.env.KV_REST_API_URL?.trim() && process.env.KV_REST_API_TOKEN?.trim());
+  const url =
+    process.env.KV_REST_API_URL?.trim() ||
+    process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token =
+    process.env.KV_REST_API_TOKEN?.trim() ||
+    process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  return !!(url && token);
+}
+
+function kvConfig(): { url: string; token: string } | null {
+  const url =
+    process.env.KV_REST_API_URL?.trim() ||
+    process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token =
+    process.env.KV_REST_API_TOKEN?.trim() ||
+    process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  if (!url || !token) return null;
+  return { url, token };
 }
 
 function hasBlob(): boolean {
@@ -29,11 +49,9 @@ function hasBlob(): boolean {
 }
 
 function redis(): Redis | null {
-  if (!hasKv()) return null;
-  return new Redis({
-    url: process.env.KV_REST_API_URL!,
-    token: process.env.KV_REST_API_TOKEN!,
-  });
+  const cfg = kvConfig();
+  if (!cfg) return null;
+  return new Redis({ url: cfg.url, token: cfg.token });
 }
 
 async function readLocalJson(filename: string): Promise<Record<string, unknown> | null> {
@@ -77,7 +95,34 @@ async function setBlobJson(pathname: string, data: unknown): Promise<void> {
   });
 }
 
-export type StateSource = "kv" | "blob" | "local" | "empty";
+function hasSupabaseRemote(): boolean {
+  return !!getServiceSupabase();
+}
+
+async function getSupabaseJson(rowKey: string): Promise<Record<string, unknown> | null> {
+  const supabase = getServiceSupabase();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("symbio_remote_state")
+    .select("data")
+    .eq("key", rowKey)
+    .maybeSingle();
+  if (error || !data?.data || typeof data.data !== "object") return null;
+  return data.data as Record<string, unknown>;
+}
+
+async function setSupabaseJson(rowKey: string, payload: unknown): Promise<void> {
+  const supabase = getServiceSupabase();
+  if (!supabase) throw new Error("Supabase service role not configured");
+  const { error } = await supabase.from("symbio_remote_state").upsert({
+    key: rowKey,
+    data: payload,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+}
+
+export type StateSource = "kv" | "supabase" | "blob" | "local" | "empty";
 
 export async function getSwarmState(): Promise<{
   data: Record<string, unknown>;
@@ -91,6 +136,9 @@ export async function getSwarmState(): Promise<{
     }
   }
 
+  const supa = await getSupabaseJson(SWARM_ROW);
+  if (supa) return { data: supa, source: "supabase" };
+
   const blob = await getBlobJson(SWARM_BLOB);
   if (blob) return { data: blob, source: "blob" };
 
@@ -99,7 +147,7 @@ export async function getSwarmState(): Promise<{
       data: {
         ...EMPTY_SWARM,
         message:
-          "Waiting for swarm push — link Redis or Blob on Vercel, then run swarm_api.py with SWARM_INGEST_URL.",
+          "Waiting for swarm push — set Supabase (free) or run swarm locally. See docs/FREE_LIVE_DEMO.md",
       },
       source: "empty",
     };
@@ -121,6 +169,9 @@ export async function getFheState(): Promise<{
       return { data: cached, source: "kv" };
     }
   }
+
+  const supa = await getSupabaseJson(FHE_ROW);
+  if (supa) return { data: supa, source: "supabase" };
 
   const blob = await getBlobJson(FHE_BLOB);
   if (blob) return { data: blob, source: "blob" };
@@ -145,13 +196,37 @@ export async function getFheState(): Promise<{
   };
 }
 
-export async function setSwarmState(data: unknown): Promise<void> {
+export async function setSwarmState(data: unknown): Promise<{ accepted: boolean; reason?: string }> {
+  const incoming = data as Record<string, unknown>;
+  const incomingCycle =
+    typeof incoming.cycle === "number" && Number.isFinite(incoming.cycle)
+      ? incoming.cycle
+      : 0;
+
+  const { data: existing } = await getSwarmState();
+  const existingCycle =
+    typeof existing.cycle === "number" && Number.isFinite(existing.cycle)
+      ? existing.cycle
+      : 0;
+
+  if (incomingCycle > 0 && existingCycle > 0 && incomingCycle < existingCycle) {
+    return {
+      accepted: false,
+      reason: `stale cycle ${incomingCycle} < stored ${existingCycle}`,
+    };
+  }
+
   const r = redis();
   if (r) {
     await r.set(SWARM_KEY, data);
-    return;
+    return { accepted: true };
+  }
+  if (hasSupabaseRemote()) {
+    await setSupabaseJson(SWARM_ROW, data);
+    return { accepted: true };
   }
   await setBlobJson(SWARM_BLOB, data);
+  return { accepted: true };
 }
 
 export async function setFheState(data: unknown): Promise<void> {
@@ -160,15 +235,23 @@ export async function setFheState(data: unknown): Promise<void> {
     await r.set(FHE_KEY, data);
     return;
   }
+  if (hasSupabaseRemote()) {
+    await setSupabaseJson(FHE_ROW, data);
+    return;
+  }
   await setBlobJson(FHE_BLOB, data);
 }
 
 export function isRemoteIngestEnabled(): boolean {
-  return (hasKv() || hasBlob()) && !!process.env.SWARM_INGEST_SECRET?.trim();
+  return (
+    (hasKv() || hasSupabaseRemote() || hasBlob()) &&
+    !!process.env.SWARM_INGEST_SECRET?.trim()
+  );
 }
 
-export function remoteStorageKind(): "kv" | "blob" | "none" {
+export function remoteStorageKind(): "kv" | "supabase" | "blob" | "none" {
   if (hasKv()) return "kv";
+  if (hasSupabaseRemote()) return "supabase";
   if (hasBlob()) return "blob";
   return "none";
 }

@@ -1,89 +1,140 @@
-/**
- * Copyright 2026 Circle Internet Group, Inc.  All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 "use client";
 
-import { useState } from "react";
-import { login } from "./actions";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { AudienceTabs } from "@/components/marketing/audience-tabs";
+import { CreatorMarketplace } from "@/components/marketing/creator-marketplace";
+import { DeveloperPanel } from "@/components/marketing/developer-panel";
+import { HeroVideoBackground } from "@/components/marketing/hero-video-background";
+import { LivePaymentTicker } from "@/components/marketing/live-payment-ticker";
+import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { Reveal } from "@/components/marketing/reveal";
+import { StatsStrip } from "@/components/marketing/stats-strip";
+import { Rfb6UseCases } from "@/components/marketing/rfb6-use-cases";
+import { CITATION_USDC } from "@/lib/marketing/registry";
 
-export default function SignIn() {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+export default function HomePage() {
+  const [tab, setTab] = useState<"creators" | "developers">("creators");
+  const [baseUrl, setBaseUrl] = useState("");
 
-  async function handleSubmit(formData: FormData) {
-    setPending(true);
-    setError(null);
-    const result = await login(formData);
-    if (result?.error) {
-      setError(result.error);
-      setPending(false);
-    }
-  }
+  useEffect(() => {
+    setBaseUrl(window.location.origin);
+  }, []);
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-2xl">Sign in</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Enter your credentials to access the dashboard
+    <MarketingShell>
+      {/* Hero — asymmetric, marketplace intent */}
+      <section className="relative overflow-hidden border-b border-border bg-[hsl(40_20%_98%)] dark:bg-background">
+        <HeroVideoBackground />
+        <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 lg:grid-cols-2 lg:items-center lg:gap-12 lg:py-20 lg:px-8">
+          <div className="space-y-6">
+            <Reveal onMount>
+              <p className="inline-flex rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                RFB #6 · Pay per piece · Arc testnet
+              </p>
+            </Reveal>
+            <Reveal onMount delay={60}>
+              <h1 className="font-display text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-[3.25rem]">
+                Register your content.
+                <span className="block text-primary">Get paid per piece.</span>
+              </h1>
+            </Reveal>
+            <Reveal onMount delay={120}>
+              <p className="max-w-lg text-lg text-muted-foreground">
+                Articles, photos, songs, videos — when an agent or app cites your URL, they unlock
+                attribution with a micro-payment (
+                <strong className="text-foreground">${CITATION_USDC.toFixed(3)} USDC</strong> today),
+                settled on Arc. No recurring subscription required.
+              </p>
+            </Reveal>
+            <Reveal onMount delay={180}>
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li className="flex gap-2">
+                  <span className="text-primary">→</span>
+                  One-time signup: name, content URL, wallet
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-primary">→</span>
+                  Per-article, per-image, per-track — not monthly fees
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-primary">→</span>
+                  Agents pay via <code className="text-xs">?source=your-url</code>
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-primary">→</span>
+                  Open registry — any builder can integrate
+                </li>
+              </ul>
+            </Reveal>
+            <Reveal onMount delay={240}>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Link
+                  href="/register"
+                  className="btn-glow hover-lift inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
+                >
+                  Register your content
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="/swarm"
+                  className="hover-lift inline-flex items-center rounded-lg border border-border bg-card px-6 py-3 text-sm font-medium text-foreground"
+                >
+                  Watch live demo
+                </Link>
+                <Link
+                  href="/register-agent"
+                  className="hover-lift inline-flex items-center rounded-lg border border-dashed border-primary/40 bg-primary/5 px-6 py-3 text-sm font-medium text-primary"
+                >
+                  Register agent
+                </Link>
+              </div>
+            </Reveal>
+          </div>
+
+          <Reveal onMount delay={120}>
+            <LivePaymentTicker />
+          </Reveal>
+        </div>
+      </section>
+
+      <StatsStrip />
+
+      <Rfb6UseCases />
+
+      {/* Audience split — Phase B */}
+      <section className="px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl space-y-10">
+          <Reveal>
+            <AudienceTabs active={tab} onChange={setTab} />
+          </Reveal>
+
+          {tab === "creators" ? (
+            <CreatorMarketplace />
+          ) : (
+            <Reveal>
+              <DeveloperPanel baseUrl={baseUrl} />
+            </Reveal>
+          )}
+        </div>
+      </section>
+
+      {/* Trust strip */}
+      <section className="border-t border-border bg-muted/20 px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row">
+          <p className="text-center text-sm text-muted-foreground sm:text-left">
+            Settlement on{" "}
+            <span className="font-medium text-foreground">Arc</span> · Powered by{" "}
+            <span className="font-medium text-foreground">x402</span> · USDC micropayments
           </p>
-        </CardHeader>
-        <CardContent>
-          <form action={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="Email"
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                placeholder="Password"
-                required
-              />
-            </div>
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
-            <Button type="submit" disabled={pending} className="w-full">
-              {pending ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-          <p className="text-center text-xs text-muted-foreground mt-4">
-            <a href="/swarm" className="text-primary hover:underline">
-              View agent swarm only (no Supabase)
-            </a>
-          </p>
-        </CardContent>
-      </Card>
-    </main>
+          <div className="flex gap-6 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <span>Arc testnet</span>
+            <span>x402</span>
+            <span>USDC</span>
+          </div>
+        </div>
+      </section>
+    </MarketingShell>
   );
 }

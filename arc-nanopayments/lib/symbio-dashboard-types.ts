@@ -18,11 +18,13 @@ export interface Agent {
 export interface Transaction {
   id: string;
   from: AgentName;
-  to: AgentName;
+  to: string;
   amount: number;
   purpose: string;
   timestamp: Date;
-  status: "confirmed" | "pending";
+  status: "confirmed" | "pending" | "failed";
+  mode?: string;
+  gatewayTx?: string | null;
 }
 
 export interface CycleData {

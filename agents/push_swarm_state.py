@@ -31,6 +31,23 @@ def _read_json(path) -> dict | None:
         return None
 
 
+def push_every_n() -> int:
+    """Push to Vercel every N cycles (1 = every cycle). Default 6 on Hobby."""
+    raw = (os.getenv("SWARM_PUSH_EVERY") or "6").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        n = 6
+    return max(1, n)
+
+
+def should_push_remote(cycle_num: int) -> bool:
+    n = push_every_n()
+    if n == 1:
+        return True
+    return cycle_num == 1 or cycle_num % n == 0
+
+
 def push_remote_state(swarm: dict | None = None, include_fhe: bool = True) -> bool:
     url = (os.getenv("SWARM_INGEST_URL") or "").strip().rstrip("/")
     secret = (os.getenv("SWARM_INGEST_SECRET") or "").strip()
@@ -62,6 +79,13 @@ def push_remote_state(swarm: dict | None = None, include_fhe: bool = True) -> bo
 
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            try:
+                meta = json.loads(body)
+                storage = meta.get("storage", "?")
+            except json.JSONDecodeError:
+                storage = "?"
+            print(f"[push] ok ({storage})")
             return 200 <= resp.status < 300
     except urllib.error.HTTPError as e:
         print(f"[push] HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:200]}")
@@ -72,4 +96,5 @@ def push_remote_state(swarm: dict | None = None, include_fhe: bool = True) -> bo
 
 if __name__ == "__main__":
     ok = push_remote_state()
-    print("[push] ok" if ok else "[push] skipped or failed")
+    if not ok:
+        print("[push] skipped or failed")

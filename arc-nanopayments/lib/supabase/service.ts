@@ -3,12 +3,12 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { hasSupabaseServiceConfig } from "@/lib/supabase/config";
 
 let client: SupabaseClient | null = null;
 
 export function getServiceSupabase(): SupabaseClient | null {
-  if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+  if (!hasSupabaseServiceConfig()) {
     return null;
   }
   if (!client) {

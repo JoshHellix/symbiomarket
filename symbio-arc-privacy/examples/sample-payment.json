@@ -1,0 +1,13 @@
+{
+  "cycle": 1,
+  "payments": [
+    {
+      "from": "Executor",
+      "to": "SettlementLayer",
+      "amount": 0.001,
+      "purpose": "creator_citation",
+      "tx_id": "MESH-000001-EXE",
+      "time": "12:00:00"
+    }
+  ]
+}

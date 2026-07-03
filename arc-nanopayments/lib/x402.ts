@@ -47,7 +47,7 @@ function buildPaymentRequirements(price: string) {
     asset: ARC_TESTNET_USDC,
     amount: amount.toString(),
     payTo: sellerAddress,
-    maxTimeoutSeconds: 345600,
+    maxTimeoutSeconds: 604900,
     extra: {
       name: "GatewayWalletBatched",
       version: "1",
@@ -67,9 +67,8 @@ export function withGateway(
   price: string,
   endpoint: string,
 ) {
-  const requirements = buildPaymentRequirements(price);
-
   return async (req: NextRequest) => {
+    const requirements = buildPaymentRequirements(price);
     const paymentSignature = req.headers.get("payment-signature");
 
     // No payment — return 402 with Gateway batching payment requirements
@@ -109,6 +108,10 @@ export function withGateway(
       );
 
       if (!verifyResult.isValid) {
+        console.error(
+          `[x402] Verify failed for ${endpoint}:`,
+          verifyResult.invalidReason,
+        );
         return NextResponse.json(
           {
             error: "Payment verification failed",

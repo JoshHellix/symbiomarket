@@ -12,7 +12,7 @@
 |------|------|
 | FHE sync (Sepolia, cycle 11) | https://sepolia.etherscan.io/tx/0xb0df6050a24f4a4e079728634063a9cee7d1a75cb737720b4dc5a248cc97207d |
 | Arc settlement (Canteen RPC) | https://testnet.arcscan.app/tx/0x53dea2c0bf37869878c6760d0851a6e4837297b0a9e20168af63eefcf2b4e261 |
-| Repo commit | *(after push — use latest `main` SHA)* |
+| Repo commit | https://github.com/JoshHellix/Symbiomarket/commit/19174d6 |
 
 ---
 

@@ -30,15 +30,24 @@ npx vercel --prod
 
 ## 2. Add storage on Vercel (required for live data)
 
-**Option A — Vercel Blob (fastest)**  
-1. [Vercel project → Storage](https://vercel.com/hellix-nebulla-s-projects/symbiomarket/stores)  
-2. Connect store **`symbio-live`** (or create + link) to **Production**  
-3. Vercel adds `BLOB_READ_WRITE_TOKEN` automatically → redeploy  
+**Recommended — Upstash Redis:** see **[`UPSTASH_SETUP.md`](UPSTASH_SETUP.md)** (step-by-step).
 
-**Option B — Upstash Redis**  
-1. Accept [Upstash terms](https://vercel.com/hellix-nebulla-s-projects/~/integrations/accept-terms/upstash?source=cli)  
-2. `npx vercel integration add upstash/upstash-kv`  
-3. Connect resource → `KV_REST_API_URL` + `KV_REST_API_TOKEN`
+1. [Storage](https://vercel.com/hellix-nebulla-s-projects/symbiomarket/stores) → **Upstash Redis** → connect to **Production**
+2. Adds `KV_REST_API_URL` + `KV_REST_API_TOKEN`
+3. Remove `BLOB_READ_WRITE_TOKEN` if Blob is suspended
+4. `npx vercel --prod`
+
+**Legacy — Vercel Blob:** low Hobby **advanced-ops** limit; not suitable for per-cycle push.
+
+---
+
+## 2b. Throttle Vercel pushes (repo `.env`)
+
+```env
+SWARM_PUSH_EVERY=6
+```
+
+Pushes on cycles **1, 6, 12, …** (~once per minute at 12s/cycle). Set `1` for every cycle (not recommended on Hobby).
 
 ---
 
@@ -59,6 +68,7 @@ Redeploy after adding env vars: `npx vercel --prod`.
 ```env
 SWARM_INGEST_URL=https://symbiomarket.vercel.app/api/swarm/ingest
 SWARM_INGEST_SECRET=same-secret-as-vercel
+SWARM_PUSH_EVERY=6
 ```
 
 ---
@@ -72,7 +82,7 @@ source venv/bin/activate
 python3 agents/swarm_api.py
 ```
 
-You should see: `[ok] Cycle N -> swarm updated + pushed to Vercel`
+You should see: `[ok] Cycle 6 -> swarm updated + pushed to Vercel (every 6 cycles)` and `[push] ok (kv)`.
 
 After FHE/Arc sync, push FHE state too:
 

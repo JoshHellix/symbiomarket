@@ -1,187 +1,213 @@
-# Arc Nanopayments Demo
+# SymbioMarket — Arc Nanopayments App
 
-Demonstrate gasless USDC nanopayments using [Circle Nanopayments](https://www.circle.com/nanopayments) on Arc. A **LangChain agent** acts as the buyer, autonomously paying for paywalled resources, while a **Next.js web app** acts as the seller, exposing x402-protected endpoints and providing a seller dashboard to monitor payments and withdraw earnings.
+Next.js frontend, x402 seller APIs, Supabase database, and operator dashboard for **SymbioMarket** — pay-per-piece creator settlement on Arc.
 
-Circle Gateway batches many signed offchain authorizations into a single onchain settlement, enabling economically viable sub-cent payments.
+Part of the [SymbioMarket monorepo](https://github.com/JoshHellix/Symbiomarket). See the [root README](../README.md) for the full project story, judge checklist, and agent swarm docs.
 
-<img alt="Arc Nanopayments Demo dashboard" src="public/screenshot.png" />
+**Live:** https://arc-nanopayments-dun.vercel.app
 
-## Table of Contents
+> The **Python agent swarm** (`../agents/swarm_api.py`) runs on the operator's machine and is **not always online**. This Vercel app and Supabase registries **are** always available. Live USDC ticks on `/swarm` require the swarm process to be running and pushing to `/api/swarm/ingest`.
 
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-- [How It Works](#how-it-works)
-- [Paywalled Endpoints](#paywalled-endpoints)
-- [Seller Dashboard](#seller-dashboard)
-- [Environment Variables](#environment-variables)
-- [Demo Credentials](#demo-credentials)
+---
+
+## What this app includes
+
+| Area | Routes / paths |
+|------|----------------|
+| **Marketing** | `/` — hero, RFB #6 use cases, live settlement ticker |
+| **Creator registry** | `/register`, `/creators`, `GET/POST /api/settlement/creators` |
+| **Agent registry** | `/register-agent`, `/agents`, `GET/POST /api/settlement/agents` |
+| **Swarm dashboard** | `/swarm` — neon agent UI, live payment feed |
+| **Operator treasury** | `/dashboard` — x402 payment log, Gateway balance, withdrawals |
+| **x402 seller** | `/api/premium/*` — quote, dataset, citation, compute, agent-task |
+| **Swarm sync** | `GET /api/swarm/state`, `POST /api/swarm/ingest` |
+
+---
+
+## Paywalled endpoints (x402 on Arc)
+
+| Endpoint | Method | Price (USDC) | Role in swarm |
+| --- | --- | --- | --- |
+| `/api/premium/quote` | GET | $0.001 | Oracle — market intel |
+| `/api/premium/dataset` | GET | $0.01 | Strategist — routing data |
+| `/api/premium/citation?source=URL` | GET | $0.001 | **Executor — creator citation (RFB #6)** |
+| `/api/premium/agent-task` | GET | $0.001 | Evaluator — spend review |
+| `/api/premium/compute` | POST | $0.0003 | Optional text analysis |
+
+Unpaid requests return **402 Payment Required**. Buyers use Circle Gateway (`GatewayClient` or `npm run pay-mesh`).
+
+---
+
+## Database (Supabase)
+
+Migrations in `supabase/migrations/`:
+
+| Migration | Table | Purpose |
+|-----------|-------|---------|
+| `20260310000000_create_transactions.sql` | payments, withdrawals | Circle template treasury |
+| `20260310000001_enable_realtime.sql` | — | Realtime subscriptions |
+| `20260310000002_symbio_remote_state.sql` | swarm state blob | Ingest from Python swarm |
+| `20260311000000_symbio_creators.sql` | `symbio_creators` | Creator registry |
+| `20260312000000_symbio_agents.sql` | `symbio_agents` | Agent operator registry |
+| `20260313000000_symbio_creators_unique_feed.sql` | unique index | Duplicate feed URL guard |
+
+Apply locally or via Supabase CLI:
+
+```bash
+npx supabase link --project-ref <your-project-ref>
+npx supabase db push
+```
+
+---
 
 ## Prerequisites
 
-- **Node.js v22+** — Install via [nvm](https://github.com/nvm-sh/nvm)
-- **Supabase CLI** — Install via `npm install -g supabase` or see [Supabase CLI docs](https://supabase.com/docs/guides/cli/getting-started)
-- **Docker Desktop** (only if using the local Supabase path) — [Install Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- *(Optional)* An **[OpenAI API key](https://platform.openai.com/api-keys)** — enables the LLM-driven payment agent. Without it, the agent runs in mock mode with scripted tool calls.
+- **Node.js v22+**
+- **Supabase** project (cloud or local Docker)
+- **Arc testnet wallets** — seller + buyer (see below)
+- *(Optional)* **DeepSeek / OpenAI** — for LLM agents (swarm uses DeepSeek in repo `.env`)
 
-## Getting Started
+---
 
-1. Clone the repository and install dependencies:
+## Getting started
+
+1. **Install dependencies**
 
    ```bash
-   git clone https://github.com/akelani-circle/arc-nanopayments-demo.git
-   cd arc-nanopayments-demo
+   cd arc-nanopayments
    npm install
    ```
 
-2. Set up environment variables:
+2. **Environment**
 
    ```bash
    cp .env.example .env.local
    ```
 
-   Then edit `.env.local` and fill in all required values (see [Environment Variables](#environment-variables) section below).
+   Fill Supabase keys, seller/buyer wallets. Run `npm run generate-wallets` if needed.
 
-3. Generate seller and buyer wallets:
+3. **Database** — push migrations (see above).
 
-   ```bash
-   npm run generate-wallets
-   ```
+4. **Start seller** (x402 routes)
 
-   This creates two EVM wallets (seller and buyer) and writes the addresses and private keys to `.env.local`. Follow the on-screen instructions to fund the buyer wallet with testnet USDC via the [Circle faucet](https://faucet.circle.com/).
-
-4. Set up the database — Choose one of the two paths below:
-
-   <details>
-   <summary><strong>Path 1: Local Supabase (Docker)</strong></summary>
-
-   Requires Docker Desktop installed and running.
+   For live agent payments, prefer production start (faster x402 than dev mode):
 
    ```bash
-   npx supabase start
-   npx supabase migration up
+   npm run build && npm run start
    ```
 
-   The output of `npx supabase start` will display the Supabase URL and API keys needed for your `.env.local`.
-
-   </details>
-
-   <details>
-   <summary><strong>Path 2: Remote Supabase (Cloud)</strong></summary>
-
-   Requires a [Supabase](https://supabase.com/) account and project.
-
-   ```bash
-   npx supabase link --project-ref <your-project-ref>
-   npx supabase db push
-   ```
-
-   Retrieve your project URL and API keys from the Supabase dashboard under **Settings > API**.
-
-   </details>
-
-5. Start the development server:
+   Dev mode works for UI work:
 
    ```bash
    npm run dev
    ```
 
-   The app will be available at `http://localhost:3000`.
-
-6. Run the AI payment agent:
+5. **Fund buyer wallet**
 
    ```bash
-   npm run agent
+   npm run fund-buyer
    ```
 
-   The agent uses the buyer wallet to purchase resources from the x402-protected premium endpoints, paying with USDC on the Arc Testnet. If `OPENAI_API_KEY` is set, the agent uses the LLM to decide which tools to call; otherwise it falls back to a scripted mock run. You can optionally pass a custom query:
+   Fund via [Circle faucet](https://faucet.circle.com/) first if needed.
 
-   ```bash
-   npm run agent -- "Buy me a quote at http://localhost:3000/api/premium/quote"
+6. **Run agent swarm** (separate terminal, repo root)
+
+   ```powershell
+   cd ../agents
+   # repo .env: LIVE_X402=1, X402_BASE_URL=http://localhost:3000
+   py -u swarm_api.py
    ```
 
-   To set a USDC spending limit, use the `--limit` flag. The agent will pause when the limit is reached and prompt for additional allowance:
+7. **Verify**
 
-   ```bash
-   npm run agent -- --limit 0.5
-   ```
+   - http://localhost:3000/swarm — cycles incrementing
+   - http://localhost:3000/api/swarm/state — `settlement.mode: live`
+   - Live feed on homepage updates when ingest URL points to Vercel
 
-## How It Works
+---
 
-- Built with [Next.js](https://nextjs.org/) App Router and [Supabase](https://supabase.com/)
-- Uses the [x402 protocol](https://www.x402.org/) for HTTP 402 nanopayments with USDC on the [Arc Network](https://arc.circle.com/)
-- Uses [Circle's x402 batching SDK](https://www.npmjs.com/package/@circle-fin/x402-batching) (`GatewayClient`) for gasless payment facilitation
-- Includes an AI payment agent built with [LangChain](https://js.langchain.com/) and [Deep Agents](https://www.npmjs.com/package/deepagents) that can check balances, deposit USDC into Gateway, verify endpoint support, and autonomously pay for x402-protected resources
-- Seller dashboard with real-time payment monitoring, Gateway balance display, and cross-chain withdrawal support
-- Payment events and withdrawals are persisted to Supabase with real-time subscriptions
-- Styled with [Tailwind CSS](https://tailwindcss.com) and components from [shadcn/ui](https://ui.shadcn.com/)
-
-## Paywalled Endpoints
-
-The seller exposes several x402-protected API routes at different price points:
-
-| Endpoint | Method | Price (USDC) | Description |
-| --- | --- | --- | --- |
-| `/api/premium/quote` | GET | $0.001 | Returns a premium inspirational quote |
-| `/api/premium/dataset` | GET | $0.01 | Returns a small JSON analytics dataset |
-| `/api/premium/compute` | POST | $0.0003 | Performs text analysis on submitted content |
-| `/api/premium/agent-task` | GET | $0.03 | Returns a clue/step for a treasure hunt task |
-
-Each endpoint returns `402 Payment Required` for unpaid requests. The buyer agent automatically signs the authorization and retries with the payment signature to receive the content.
-
-## Seller Dashboard
-
-The dashboard at `/dashboard` provides:
-
-- **Gateway Balance** — Top-bar badge showing the seller's available Gateway balance, with a detail dialog for total, withdrawing, withdrawable, and wallet USDC balances
-- **Payments Table** — Real-time list of incoming nanopayments with filtering and sorting, linked to [Arc Testnet Explorer](https://testnet.arcscan.app)
-- **Withdraw Dialog** — Withdraw available USDC from Gateway to a wallet address on any supported testnet chain (Arc Testnet, Base Sepolia, Ethereum Sepolia, Arbitrum Sepolia, Optimism Sepolia, Avalanche Fuji, Polygon Amoy)
-
-## Environment Variables
-
-Copy `.env.example` to `.env.local` and fill in the required values:
-
-```bash
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your-project-url
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-or-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# x402 / Circle Nanopayments
-SELLER_ADDRESS=0xYourWalletAddress
-SELLER_PRIVATE_KEY=0xYourSellerPrivateKey
-
-# Buyer wallet (for the payment agent)
-BUYER_ADDRESS=0xYourBuyerWalletAddress
-BUYER_PRIVATE_KEY=0xYourBuyerPrivateKey
-
-# AI Payment Agent (optional — omit to run in mock mode)
-# OPENAI_API_KEY=your-openai-api-key
-```
+## Environment variables
 
 | Variable | Scope | Purpose |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase project URL. |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public | Supabase anonymous / publishable key. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side | Supabase service-role key, used to record payment events and withdrawals. |
-| `SELLER_ADDRESS` | Server-side | EVM wallet address for receiving USDC payments. |
-| `SELLER_PRIVATE_KEY` | Server-side | Seller wallet private key, used for Gateway balance queries and withdrawals. |
-| `BUYER_ADDRESS` | Agent | Buyer wallet address for making payments. |
-| `BUYER_PRIVATE_KEY` | Agent | Buyer wallet private key for signing payment authorizations. |
-| `OPENAI_API_KEY` | Agent | *(Optional)* OpenAI API key. If omitted, the agent runs in mock mode with scripted tool calls. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Public | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server | Registry writes, payment events |
+| `SELLER_ADDRESS` / `SELLER_PRIVATE_KEY` | Server | x402 payee, Gateway withdrawals |
+| `BUYER_ADDRESS` / `BUYER_PRIVATE_KEY` | Scripts | Agent buyer wallet |
+| `SWARM_INGEST_SECRET` | Server | Auth for `POST /api/swarm/ingest` |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Server | Optional Upstash for swarm state |
 
-> **Tip:** Run `npm run generate-wallets` to auto-generate the `SELLER_ADDRESS`, `SELLER_PRIVATE_KEY`, `BUYER_ADDRESS`, and `BUYER_PRIVATE_KEY` values.
+Repo root `.env` (for Python swarm):
 
-## Demo Credentials
+| Variable | Purpose |
+| --- | --- |
+| `LIVE_X402=1` | Enable real x402 mesh |
+| `X402_BASE_URL` | Seller URL (localhost or Vercel) |
+| `SWARM_INGEST_URL` | Vercel ingest endpoint |
+| `SETTLEMENT_API_URL` | Creator registry base URL |
+| `DEEPSEEK_API_KEY` | LLM oracle (optional) |
+| `SWARM_SESSION_BUDGET_USDC` | Strategist budget cap |
 
-The app uses a hardcoded demo account for local development:
+---
+
+## Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Next.js dev server |
+| `npm run build` / `npm run start` | Production server (recommended for x402) |
+| `npm run generate-wallets` | Create seller + buyer keys |
+| `npm run fund-buyer` | Send test USDC to buyer |
+| `npm run pay-mesh` | Execute x402 mesh from JSON intents |
+| `npm run agent` | LangChain deep agent buyer (Circle template) |
+| `npm run verify-supabase` | Check DB connectivity |
+
+---
+
+## Operator dashboard
+
+`/dashboard` (login required):
+
+- **Gateway balance** — seller USDC in Circle Gateway
+- **Payments table** — x402 events with Arcscan links (when tx is `0x` hash)
+- **Withdraw** — cross-chain testnet withdrawal
+
+Demo login (local only):
 
 | Email | Password |
 | --- | --- |
 | `admin@example.com` | `123456` |
 
-## Security & Usage Model
+---
 
-This sample application:
-- Assumes testnet usage only
-- Handles secrets via environment variables
-- Is not intended for production use without modification
+## How it works
+
+- [Next.js](https://nextjs.org/) App Router + [Supabase](https://supabase.com/) Postgres
+- [x402](https://www.x402.org/) HTTP 402 nanopayments with USDC on [Arc](https://arc.circle.com/)
+- [Circle x402 batching](https://www.npmjs.com/package/@circle-fin/x402-batching) — gasless Gateway settlements
+- Creator citation routing in `lib/settlement/resolve.ts` — matches `?source=` to registry URLs
+- Swarm state from `../agents/swarm_api.py` via ingest API
+- [Tailwind CSS 4](https://tailwindcss.com) + [shadcn/ui](https://ui.shadcn.com/)
+
+---
+
+## Security
+
+- Testnet only — not production-ready without hardening
+- Secrets via environment variables — never commit `.env.local`
+- Service role key server-side only
+- Swarm ingest protected by shared secret
+
+See [SECURITY.md](./SECURITY.md).
+
+---
+
+## Related docs
+
+- [Root README](../README.md) — full project, judges, Arc OSS
+- [Lepton form copy](../docs/LEPTON_SUBMISSION.md)
+- [Settlement layer](../settlement/README.md)
+- [What is SymbioMarket](../docs/WHAT_IS_SYMBIOMARKET.md)
+
+Based on [Circle arc-nanopayments-demo](https://github.com/akelani-circle/arc-nanopayments-demo), extended for creator micropayments and multi-agent settlement.

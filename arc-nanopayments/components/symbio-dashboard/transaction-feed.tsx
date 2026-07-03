@@ -1,15 +1,18 @@
 "use client"
 
 import { ArrowRight, ArrowDownRight, Coins } from "lucide-react"
-import type { Transaction, AgentName } from "@/lib/symbio-dashboard-types"
+import type { Transaction } from "@/lib/symbio-dashboard-types"
 import { useEffect, useRef } from "react"
 
-const nameColor: Record<AgentName, string> = {
+const nameColor: Record<string, string> = {
   Oracle: "text-neon-green",
   Strategist: "text-neon-purple",
   Executor: "text-neon-cyan",
   Evaluator: "text-chart-5",
-}
+  Creators: "text-neon-green",
+};
+
+const ARC_EXPLORER = "https://testnet.arcscan.app";
 
 export function TransactionFeed({ transactions }: { transactions: Transaction[] }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -66,18 +69,42 @@ function TransactionRow({ tx, isNew }: { tx: Transaction; isNew: boolean }) {
         <span className="shrink-0 text-[10px] text-muted-foreground">{tx.id}</span>
         <span className={`shrink-0 font-bold text-[11px] ${nameColor[tx.from]}`}>{tx.from}</span>
         <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-        <span className={`shrink-0 font-bold text-[11px] ${nameColor[tx.to]}`}>{tx.to}</span>
+        <span className={`shrink-0 font-bold text-[11px] ${nameColor[tx.to] ?? "text-muted-foreground"}`}>{tx.to}</span>
       </div>
 
       {/* Amount */}
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-muted-foreground/60">{tx.purpose}</span>
-        <span className="font-bold text-xs text-neon-green">${tx.amount.toFixed(6)}</span>
-        <span
-          className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-            tx.status === "confirmed" ? "bg-neon-green" : "bg-chart-4 animate-pulse"
-          }`}
-        />
+      <div className="flex flex-col items-end gap-0.5">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground/60">{tx.purpose}</span>
+          {tx.mode === "live" && (
+            <span className="text-[9px] uppercase tracking-wide text-neon-green/80">usdc</span>
+          )}
+          <span className="font-bold text-xs text-neon-green">${tx.amount.toFixed(6)}</span>
+          <span
+            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+              tx.status === "confirmed"
+                ? "bg-neon-green"
+                : tx.status === "failed"
+                  ? "bg-destructive"
+                  : "bg-chart-4 animate-pulse"
+            }`}
+          />
+        </div>
+        {tx.gatewayTx?.startsWith("0x") && (
+          <a
+            href={`${ARC_EXPLORER}/tx/${tx.gatewayTx}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[9px] text-neon-green/70 hover:underline"
+          >
+            {tx.gatewayTx.slice(0, 10)}…
+          </a>
+        )}
+        {tx.gatewayTx && !tx.gatewayTx.startsWith("0x") && (
+          <span className="text-[9px] text-muted-foreground" title={tx.gatewayTx}>
+            gw:{tx.gatewayTx.slice(0, 8)}…
+          </span>
+        )}
       </div>
     </div>
   )

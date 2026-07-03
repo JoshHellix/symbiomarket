@@ -77,18 +77,26 @@ export function mapSwarmToAgents(swarm: SwarmState): Agent[] {
 }
 
 export function mapSwarmToTransactions(swarm: SwarmState): Transaction[] {
-  return swarm.payments.map((p: SwarmPayment, i: number) => ({
-    id: p.tx_id ?? `TX-${String(swarm.cycle - i).padStart(6, "0")}`,
-    from: asAgentName(p.from),
-    to: asAgentName(p.to),
-    amount: parseFloat(p.amount.toFixed(6)),
-    purpose: p.purpose,
-    timestamp: new Date(),
-    status: p.fhe_status === "pending" ? "pending" : "confirmed",
-  }));
+  return swarm.payments.map((p: SwarmPayment, i: number) => {
+    const live = p.mode === "live" && p.gateway_tx;
+    return {
+      id: p.tx_id ?? `TX-${String(swarm.cycle - i).padStart(6, "0")}`,
+      from: asAgentName(p.from),
+      to: p.to === "SettlementLayer" ? "Creators" : asAgentName(p.to),
+      amount: parseFloat(Number(p.amount).toFixed(6)),
+      purpose: p.purpose,
+      timestamp: new Date(),
+      status: live ? "confirmed" : p.mode === "failed" ? "failed" : "pending",
+      mode: p.mode,
+      gatewayTx: p.gateway_tx,
+    };
+  });
 }
 
 function paymentForCycle(swarm: SwarmState, cycleId: number) {
+  const meshPrefix = `MESH-${String(cycleId).padStart(6, "0")}`;
+  const meshHit = swarm.payments.find((p) => p.tx_id?.startsWith(meshPrefix));
+  if (meshHit) return meshHit;
   const label = `TX-${String(cycleId).padStart(6, "0")}`;
   return swarm.payments.find((p) => p.tx_id === label);
 }

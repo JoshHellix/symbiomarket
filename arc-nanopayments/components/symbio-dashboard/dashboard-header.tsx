@@ -7,9 +7,18 @@ interface HeaderProps {
   totalVolume: number
   totalProfit: number
   live?: boolean
+  settlementMode?: string
+  liveUsdcTotal?: number
 }
 
-export function DashboardHeader({ cycle, totalVolume, totalProfit, live = true }: HeaderProps) {
+export function DashboardHeader({
+  cycle,
+  totalVolume,
+  totalProfit,
+  live = true,
+  settlementMode,
+  liveUsdcTotal,
+}: HeaderProps) {
   return (
     <header className="border-b border-border px-4 py-3 md:px-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -53,6 +62,14 @@ export function DashboardHeader({ cycle, totalVolume, totalProfit, live = true }
               {totalProfit.toFixed(4)} session PnL
             </span>
           </div>
+          {settlementMode === "live" && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">X402</span>
+              <span className="font-bold text-neon-green">
+                {(liveUsdcTotal ?? 0).toFixed(4)} USDC live
+              </span>
+            </div>
+          )}
           {live && (
             <div className="flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-neon-green animate-pulse-glow" />

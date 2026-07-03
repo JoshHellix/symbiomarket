@@ -14,3 +14,12 @@ export function isSupabaseConfigured(): boolean {
 
   return url.startsWith("http://") || url.startsWith("https://");
 }
+
+/** Server ingest / service routes — only URL + service role required. */
+export function hasSupabaseServiceConfig(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const service = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !service) return false;
+  if (url.includes("your-project")) return false;
+  return url.startsWith("http://") || url.startsWith("https://");
+}

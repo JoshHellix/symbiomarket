@@ -86,6 +86,10 @@ const endpoints = [
     body: { text: "Hello from the Arc nanopayments demo!" },
   },
   { url: `${BASE_URL}/api/premium/agent-task`, method: "GET" as const },
+  {
+    url: `${BASE_URL}/api/premium/citation?source=https://symbiomarket.vercel.app/feeds/demo`,
+    method: "GET" as const,
+  },
 ];
 
 // --- Generate ephemeral wallet ---

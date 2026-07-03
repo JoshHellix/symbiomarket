@@ -97,6 +97,8 @@ SWARM_INGEST_SECRET=your-secret`}
         totalVolume={totalVolume}
         totalProfit={totalProfit}
         live={!error}
+        settlementMode={swarm.settlement?.mode}
+        liveUsdcTotal={swarm.settlement?.live_usdc_total}
       />
       <main className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -116,6 +118,10 @@ SWARM_INGEST_SECRET=your-secret`}
           <p className="mt-4 text-center text-[10px] text-muted-foreground">
             Live swarm feed
             <span className="text-muted-foreground"> (local file or Vercel KV)</span>
+            {" · "}
+            <Link href="/register" className="text-neon-green hover:underline">
+              Register creator feed →
+            </Link>
             {" · "}
             <Link href="/" className="text-neon-green hover:underline">
               Circle USDC dashboard →

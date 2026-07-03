@@ -1,53 +1,73 @@
 /**
  * Copyright 2026 Circle Internet Group, Inc.  All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@custom-variant dark (&:is(.dark *));
+
 :root {
-  --background: 0 0% 100%;
-  --foreground: 255 16.47% 33.33%;
-  --card: 0 0% 100%;
-  --card-foreground: 255 16.47% 33.33%;
+  color-scheme: light;
+  --background: 40 20% 98%;
+  --foreground: 0 0% 9%;
+  --card: 0 0% 99%;
+  --card-foreground: 0 0% 9%;
   --popover: 0 0% 100%;
-  --popover-foreground: 255 16.47% 33.33%;
-  --primary: 204.62 100% 38.24%;
+  --popover-foreground: 0 0% 9%;
+  --primary: 152 76% 24%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 100% 97.25%;
-  --secondary-foreground: 204.62 100% 38.24%;
-  --muted: 252 20% 95.1%;
-  --muted-foreground: 253.33 11.79% 44.9%;
-  --accent: 258 100% 96.08%;
-  --accent-foreground: 255 25.53% 18.43%;
-  --destructive: 353.92 83.15% 65.1%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+  --accent: 152 45% 92%;
+  --accent-foreground: 152 76% 18%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 253.33 16.36% 89.22%;
-  --input: 253.33 16.36% 89.22%;
-  --ring: 204.1 100% 55.1%;
-  --chart-1: 204.1 100% 55.1%;
-  --chart-2: 259.15 100% 72.35%;
-  --chart-3: 150.98 75.41% 47.84%;
-  --chart-4: 21.9 100% 73.14%;
-  --chart-5: 294.95 88.43% 76.27%;
+  --border: 0 0% 90%;
+  --input: 0 0% 90%;
+  --ring: 152 76% 32%;
+  --chart-1: 152 76% 32%;
+  --chart-2: 204 100% 55%;
+  --chart-3: 150 75% 48%;
+  --chart-4: 22 100% 73%;
+  --chart-5: 295 88% 76%;
   --radius: 0.5rem;
 }
 
+.dark {
+  color-scheme: dark;
+  --background: 0 0% 7%;
+  --foreground: 0 0% 95%;
+  --card: 0 0% 11%;
+  --card-foreground: 0 0% 95%;
+  --popover: 0 0% 11%;
+  --popover-foreground: 0 0% 95%;
+  --primary: 152 55% 45%;
+  --primary-foreground: 0 0% 7%;
+  --secondary: 0 0% 16%;
+  --secondary-foreground: 0 0% 95%;
+  --muted: 0 0% 16%;
+  --muted-foreground: 0 0% 65%;
+  --accent: 152 40% 18%;
+  --accent-foreground: 152 55% 75%;
+  --destructive: 0 62% 50%;
+  --destructive-foreground: 0 0% 95%;
+  --border: 0 0% 20%;
+  --input: 0 0% 20%;
+  --ring: 152 55% 45%;
+  --chart-1: 152 55% 45%;
+  --chart-2: 204 100% 65%;
+  --chart-3: 150 60% 55%;
+  --chart-4: 22 90% 65%;
+  --chart-5: 295 70% 70%;
+}
+
 @theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -79,9 +99,111 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer-line {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in-up {
+    animation: fade-in-up 0.55s ease-out both;
+  }
+
+  .animate-header-in {
+    animation: fade-in-down 0.55s ease-out both;
+  }
+
+  .animate-shimmer-border {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--border)) 0%,
+      hsl(var(--primary) / 0.35) 50%,
+      hsl(var(--border)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-line 4s ease-in-out infinite;
+  }
+
+  .hover-lift {
+    @apply motion-safe:transition-all motion-safe:duration-300;
+  }
+
+  .hover-lift:hover {
+    @apply motion-safe:-translate-y-1 motion-safe:shadow-md;
+  }
+
+  .icon-float {
+    animation: float-soft 3.5s ease-in-out infinite;
+  }
+
+  .btn-glow {
+    @apply motion-safe:transition-all motion-safe:duration-300;
+  }
+
+  .btn-glow:hover {
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
+  }
+
+  .font-display {
+    font-family: var(--font-display), ui-serif, Georgia, serif;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-header-in,
+    .animate-fade-in-up,
+    .icon-float,
+    .animate-shimmer-border {
+      animation: none;
+    }
+
+    .hover-lift:hover {
+      transform: none;
+    }
   }
 }

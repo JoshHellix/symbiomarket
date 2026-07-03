@@ -14,7 +14,20 @@ SymbioMarket **already has** the Circle nanopayments template in `arc-nanopaymen
 
 Your **Arc / Sepolia keys** in repo `.env` are separate from x402 — you can reuse the same wallet address if you fund it for Gateway.
 
-## Steps (when ready)
+## Circle x402 fix (Lepton Phase 2)
+
+Payment requirements must use **`maxTimeoutSeconds: 604900`** (7+ days). Shorter windows fail with `authorization_validity_too_short` from Circle Gateway.
+
+**Wallets:** run `npm run generate-wallets` — seller and buyer must be **different** addresses. Fund buyer from your legacy Arc wallet: `npm run fund-buyer`.
+
+**Smoke test (5 real payments, exits):**
+
+```powershell
+cd arc-nanopayments
+npm run dev
+npm run pay-once
+```
+
 
 1. **Supabase** (choose one):
    - **Local:** Docker + `npx supabase start` + `npx supabase migration up`
